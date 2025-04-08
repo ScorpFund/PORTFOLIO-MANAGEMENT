@@ -94,7 +94,7 @@ def main():
 
     # Display quadrant breakdown
     st.markdown("### Quadrant Breakdown")
-    st.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").rest.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").reset_index(name="Days"))
+    st.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").rest.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").reset_index(name="Days")))
 
     # Display cluster stats
     st.markdown("### Cluster Stats")

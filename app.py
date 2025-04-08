@@ -62,8 +62,14 @@ else:
         volume_m = row.get('Volume_M')
 
         if pd.notna(return_pct) and pd.notna(volume_m):
-            return_pct_val = return_pct.item()  # Extract scalar value
-            volume_m_val = volume_m.item()      # Extract scalar value
+            if isinstance(return_pct, pd.Series):
+                return_pct_val = return_pct.item()  # Extract scalar value
+            else:
+                return_pct_val = return_pct
+            if isinstance(volume_m, pd.Series):
+                volume_m_val = volume_m.item()      # Extract scalar value
+            else:
+                volume_m_val = volume_m
             if return_pct_val >= x_mid and volume_m_val >= y_mid:
                 return '📈 High Volume, High Return'
             elif return_pct_val < x_mid and volume_m_val >= y_mid:

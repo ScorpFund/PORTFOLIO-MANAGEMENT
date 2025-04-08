@@ -64,19 +64,22 @@ def classify_quadrants(df):
 # ---------------------- Visualization ----------------------
 
 def plot_cluster_scatter(df, ticker, n_days):
+    st.subheader("🔍 Debug Info: Data Sample Before Plot")
+    st.write(df.head())
+    st.write("Columns:", df.columns.tolist())
+
     fig = px.scatter(
         df,
         x="Return_Pct",
         y="Volume_M",
-        color="Cluster",  # ← Fix: pass the column name, not a Series
-        symbol="Quadrant",
+        color="Cluster",        # Ensure 'Cluster' is a column, not a Series
+        symbol="Quadrant",      # Ensure 'Quadrant' exists too
         hover_data=["Return_Pct", "Volume_M"],
         title=f"{ticker} Daily Return vs Volume (Last {n_days} Days)",
         template="plotly_white",
         height=600
     )
 
-    # Add quadrant lines
     fig.add_shape(
         type="line",
         x0=df["Return_Pct"].median(), x1=df["Return_Pct"].median(),

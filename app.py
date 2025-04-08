@@ -42,17 +42,12 @@ def perform_clustering(df, n_clusters):
 
 # ---------------------- Quadrant Classification ----------------------
 def classify_quadrants(df):
-    x_mid = df['Return_Pct'].median()
-    y_mid = df['Volume_M'].median()
+    x_mid = float(df['Return_Pct'].median())
+    y_mid = float(df['Volume_M'].median())
 
     def get_quadrant(row):
-        # Ensure scalar comparisons
-        try:
-            x = float(row['Return_Pct'])
-            y = float(row['Volume_M'])
-        except Exception as e:
-            print(f"Row type issue: {type(row)} | Row: {row}")
-            raise e
+        x = float(row['Return_Pct'])
+        y = float(row['Volume_M'])
 
         if (x >= x_mid) and (y >= y_mid):
             return '📈 High Volume, High Return'

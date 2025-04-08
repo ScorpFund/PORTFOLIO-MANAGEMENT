@@ -48,20 +48,22 @@ else:
 
     # Quadrant classification
     def classify_quadrant(row):
-        return_pct = row.get('Return_Pct')  # Use .get() to handle potential missing keys
-        volume_m = row.get('Volume_M')      # Use .get()
+        return_pct = row.get('Return_Pct')
+        volume_m = row.get('Volume_M')
 
-        if pd.notna(return_pct) and pd.notna(volume_m): # Check for nulls
-            if return_pct >= x_mid and volume_m >= y_mid:
+        if pd.notna(return_pct) and pd.notna(volume_m):
+            return_pct_val = return_pct.item()  # Extract scalar value
+            volume_m_val = volume_m.item()      # Extract scalar value
+            if return_pct_val >= x_mid and volume_m_val >= y_mid:
                 return '📈 High Volume, High Return'
-            elif return_pct < x_mid and volume_m >= y_mid:
+            elif return_pct_val < x_mid and volume_m_val >= y_mid:
                 return '📉 High Volume, Low Return'
-            elif return_pct >= x_mid and volume_m < y_mid:
+            elif return_pct_val >= x_mid and volume_m_val < y_mid:
                 return '📊 Low Volume, High Return'
             else:
                 return '🔻 Low Volume, Low Return'
         else:
-            return '❓ Data Missing' # Explicitly handle missing data
+            return '❓ Data Missing'
 
     data['Quadrant'] = data.apply(classify_quadrant, axis=1)
 

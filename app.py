@@ -20,19 +20,21 @@ log_scale = st.sidebar.checkbox("Use Log Scale for Volume (x-axis)", value=True)
 
 @st.cache_data
 def fetch_data(tickers, period):
-    data = yf.download(tickers, period=period, progress=False, group_by="ticker")
-    
+    data = yf.download(tickers, period=period, progress=False, group_by="ticker", auto_adjust=True)
+
+    # If single ticker, make sure tickers is a string
     if isinstance(tickers, str) or len(tickers) == 1:
         if isinstance(tickers, list):
             tickers = tickers[0]
-        prices = data['Adj Close'] if 'Adj Close' in data else data['Close']
+        prices = data['Close']
         volumes = data['Volume']
         prices = pd.DataFrame({tickers: prices})
         volumes = pd.DataFrame({tickers: volumes})
     else:
-        prices = data['Adj Close']
-        volumes = data['Volume']
-    
+        # Multi-ticker: grab Close and Volume for each
+        prices = pd.DataFrame({ticker: data[ticker]['Close'] for ticker in tickers})
+        volumes = pd.DataFrame({ticker: data[ticker]['Volume'] for ticker in tickers})
+
     return prices, volumes
 
 if tickers:
@@ -44,7 +46,7 @@ if tickers:
     avg_returns = returns.mean()
     avg_volumes = volumes.mean()
 
-    # Combine into DataFrame
+    # Combine into a DataFrame
     raw_features = pd.DataFrame({
         'avg_volume': avg_volumes,
         'avg_return': avg_returns
@@ -54,7 +56,7 @@ if tickers:
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(raw_features)
 
-    # KMeans clustering
+    # Clustering
     kmeans = KMeans(n_clusters=clusters, random_state=42)
     raw_features['cluster'] = kmeans.fit_predict(scaled_features)
 

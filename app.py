@@ -55,6 +55,36 @@ else:
 
     data['Quadrant'] = data.apply(classify_quadrant, axis=1)
 
+    # ✅ Validate expected columns before plotting
+required_cols = ['Return_Pct', 'Volume_M', 'Cluster', 'Quadrant']
+missing_cols = [col for col in required_cols if col not in data.columns or data[col].isnull().all()]
+if missing_cols:
+    st.error(f"Missing or empty required columns: {missing_cols}")
+else:
+    st.subheader(f"{ticker} Daily Returns vs Volume (Last {n_days} Days)")
+    fig = px.scatter(
+        data,
+        x='Return_Pct',
+        y='Volume_M',
+        color='Cluster',
+        symbol='Quadrant',
+        hover_data=['Return_Pct', 'Volume_M'],
+        template='plotly_white',
+        height=600
+    )
+
+    fig.add_shape(type='line', x0=x_mid, x1=x_mid, y0=data['Volume_M'].min(), y1=data['Volume_M'].max(),
+                  line=dict(color='gray', dash='dot'))
+    fig.add_shape(type='line', x0=data['Return_Pct'].min(), x1=data['Return_Pct'].max(), y0=y_mid, y1=y_mid,
+                  line=dict(color='gray', dash='dot'))
+
+    fig.update_layout(
+        xaxis_title="Daily Return (%)",
+        yaxis_title="Volume (Millions)",
+        legend_title="Cluster",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
     # --- Plot ---
     st.subheader(f"{ticker} Daily Returns vs Volume (Last {n_days} Days)")
     fig = px.scatter(

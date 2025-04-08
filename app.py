@@ -1,118 +1,143 @@
-import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
 import plotly.express as px
+import streamlit as st
 
-# --- App Title ---
-st.set_page_config(page_title="Stock Return vs Volume", layout="centered")
-st.title("📈 Return vs Volume Clustering")
+# ---------------------- Data Fetching ----------------------
+def fetch_stock_data(ticker, n_days):
+    try:
+        df = yf.download(ticker, period=f"{n_days}d", progress=False, auto_adjust=False)
+        if df.empty:
+            st.error(f"❌ No data found for '{ticker}' over the last {n_days} days.")
+            return None
+        return df
+    except Exception as e:
+        st.error(f"❌ Error fetching data: {e}")
+        return None
 
-# --- Sidebar Inputs ---
-ticker = st.text_input("Enter Stock Ticker:", value="AAPL")
-n_days = st.slider("Select Number of Days:", min_value=30, max_value=180, value=90)
-n_clusters = st.slider("Select Number of Clusters:", min_value=2, max_value=6, value=4)
+# ---------------------- Data Processing ----------------------
+def process_stock_data(df):
+    df = df[['Close', 'Volume']].dropna()
+    df['Return'] = df['Close'].pct_change()
+    df.dropna(inplace=True)
+    df['Return_Pct'] = df['Return'] * 100
+    df['Volume_M'] = df['Volume'] / 1e6
 
-@st.cache_data
-def fetch_data(ticker, n_days):
-    """Fetches stock data from yfinance."""
-    df = yf.download(ticker, period=f"{n_days}d", progress=False, auto_adjust=False)
+    # Handle outliers
+    z_return = np.abs((df['Return_Pct'] - df['Return_Pct'].mean()) / df['Return_Pct'].std())
+    z_volume = np.abs((df['Volume_M'] - df['Volume_M'].mean()) / df['Volume_M'].std())
+    df = df[(z_return < 3) & (z_volume < 3)]
+
     return df
 
-# --- Fetch Data ---
-data = fetch_data(ticker, n_days)
-
-if data.empty:
-    st.error("❌ No data found. Please check the ticker symbol.")
-else:
-    data = data[['Close', 'Volume']].dropna()
-    data['Return'] = data['Close'].pct_change()
-    data.dropna(inplace=True)
-    data['Return_Pct'] = data['Return'] * 100
-    data['Volume_M'] = data['Volume'] / 1e6
-
-    # Filter outliers
-    data = data[(data['Return_Pct'].between(-50, 50)) & (data['Volume_M'] > 0)]
-
-    # Normalize for clustering
-    features = data[['Return_Pct', 'Volume_M']]
-    features_scaled = (features - features.mean()) / features.std()
-
-    # KMeans Clustering
+# ---------------------- Clustering ----------------------
+def perform_clustering(df, n_clusters):
+    features = df[['Return_Pct', 'Volume_M']].replace([np.inf, -np.inf], np.nan).fillna(0)
+    scaled = (features - features.mean()) / features.std()
     kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
-    data['Cluster'] = kmeans.fit_predict(features_scaled)
+    df['Cluster'] = kmeans.fit_predict(scaled)
+    return df
 
-    # Midpoints
-    x_mid = data['Return_Pct'].median()
-    y_mid = data['Volume_M'].median()
+# ---------------------- Quadrant Classification ----------------------
+def classify_quadrants(df):
+    x_mid = df['Return_Pct'].median()
+    y_mid = df['Volume_M'].median()
 
-    # Quadrant classification
-    def classify_quadrant(row):
-        """
-        Classifies data points into quadrants based on return and volume.
+    def get_quadrant(row):
+        # Ensure scalar comparisons
+        try:
+            x = float(row['Return_Pct'])
+            y = float(row['Volume_M'])
+        except Exception as e:
+            print(f"Row type issue: {type(row)} | Row: {row}")
+            raise e
 
-        Args:
-            row (pd.Series): A row of the DataFrame.
-
-        Returns:
-            str: The quadrant classification.
-        """
-        return_pct = row.get('Return_Pct')
-        volume_m = row.get('Volume_M')
-
-        if pd.notna(return_pct) and pd.notna(volume_m):
-            if isinstance(return_pct, pd.Series):
-                return_pct_val = return_pct.item()  # Extract scalar value
-            else:
-                return_pct_val = return_pct
-            if isinstance(volume_m, pd.Series):
-                volume_m_val = volume_m.item()      # Extract scalar value
-            else:
-                volume_m_val = volume_m
-            if return_pct_val >= x_mid and volume_m_val >= y_mid:
-                return '📈 High Volume, High Return'
-            elif return_pct_val < x_mid and volume_m_val >= y_mid:
-                return '📉 High Volume, Low Return'
-            elif return_pct_val >= x_mid and volume_m_val < y_mid:
-                return '📊 Low Volume, High Return'
-            else:
-                return '🔻 Low Volume, Low Return'
+        if (x >= x_mid) and (y >= y_mid):
+            return '📈 High Volume, High Return'
+        elif (x < x_mid) and (y >= y_mid):
+            return '📉 High Volume, Low Return'
+        elif (x >= x_mid) and (y < y_mid):
+            return '📊 Low Volume, High Return'
         else:
-            return '❓ Data Missing'
+            return '🔻 Low Volume, Low Return'
 
-    data['Quadrant'] = data.apply(classify_quadrant, axis=1)
+    df['Quadrant'] = df.apply(get_quadrant, axis=1)
+    return df
 
-    # Plotly Scatter
+# ---------------------- Visualization ----------------------
+def plot_cluster_scatter(df, ticker, n_days):
     fig = px.scatter(
-        data,
-        x='Return_Pct',
-        y='Volume_M',
-        color=data['Cluster'].astype(str),
-        symbol='Quadrant',
-        hover_data={'Return_Pct': ':.1f', 'Volume_M': ':.2f'},
-        title=f"{ticker.upper()} Daily Return vs Volume (Last {n_days} Days)",
-        template='plotly_white',
-        height=600
+        df, x="Return_Pct", y="Volume_M", color=df["Cluster"].astype(str),
+        symbol="Quadrant", hover_data=["Return_Pct", "Volume_M"],
+        title=f"{ticker} Daily Return vs Volume (Last {n_days} Days)",
+        template="plotly_white", height=600
     )
 
-    fig.add_shape(type='line', x0=x_mid, x1=x_mid, y0=data['Volume_M'].min(), y1=data['Volume_M'].max(),
-                  line=dict(color='gray', dash='dot'))
-    fig.add_shape(type='line', x0=data['Return_Pct'].min(), x1=data['Return_Pct'].max(), y0=y_mid, y1=y_mid,
-                  line=dict(color='gray', dash='dot'))
-
-    fig.update_layout(
-        xaxis_title="Daily Return (%)",
-        yaxis_title="Volume (Millions)",
-        legend_title="Cluster",
+    # Add quadrant lines
+    fig.add_shape(
+        type="line", x0=df["Return_Pct"].median(), x1=df["Return_Pct"].median(),
+        y0=df["Volume_M"].min(), y1=df["Volume_M"].max(),
+        line=dict(color="gray", dash="dot")
     )
-
+    fig.add_shape(
+        type="line", x0=df["Return_Pct"].min(), x1=df["Return_Pct"].max(),
+        y0=df["Volume_M"].median(), y1=df["Volume_M"].median(),
+        line=dict(color="gray", dash="dot")
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Stats Section ---
-    st.subheader("📌 Quadrant Breakdown")
-    st.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").reset_index(name="Days"))
-
+# ---------------------- Stats Display ----------------------
+def display_cluster_statistics(df):
     st.subheader("📌 Cluster Statistics")
-    stats = data.groupby('Cluster')[['Return_Pct', 'Volume_M']].agg(['mean', 'std', 'count']).round(2)
-    st.dataframe(stats)
+    try:
+        stats = (
+            df.groupby("Cluster")
+              .agg({
+                  "Return_Pct": ['mean', 'std', 'count'],
+                  "Volume_M": ['mean', 'std', 'count']
+              })
+        )
+        stats.columns = ['_'.join(col).strip() for col in stats.columns.values]
+        stats = stats.round(2)
+        st.dataframe(stats)
+    except Exception as e:
+        st.error(f"⚠️ Error computing cluster statistics: {e}")
+
+def display_quadrant_breakdown(df):
+    st.subheader("📌 Quadrant Breakdown")
+    breakdown = (
+        df["Quadrant"]
+          .value_counts()
+          .rename_axis("Quadrant")
+          .reset_index(name="Days")
+    )
+    st.dataframe(breakdown)
+
+# ---------------------- Main App ----------------------
+def main():
+    st.set_page_config(page_title="Stock Cluster Analyzer", layout="wide")
+    st.title("📊 Stock Return & Volume Cluster Analysis")
+
+    # Sidebar input
+    with st.sidebar:
+        ticker = st.text_input("Enter Stock Ticker", "AAPL").upper()
+        n_days = st.slider("Days of Data", 30, 180, 90)
+        n_clusters = st.slider("Number of Clusters", 2, 6, 4)
+
+    df = fetch_stock_data(ticker, n_days)
+    if df is not None:
+        df = process_stock_data(df)
+        df = perform_clustering(df, n_clusters)
+        df = classify_quadrants(df)
+
+        plot_cluster_scatter(df, ticker, n_days)
+        display_quadrant_breakdown(df)
+        display_cluster_statistics(df)
+    else:
+        st.info("Please enter a valid ticker and try again.")
+
+# ---------------------- Run ----------------------
+if __name__ == "__main__":
+    main()

@@ -16,6 +16,7 @@ n_clusters = st.slider("Select Number of Clusters:", min_value=2, max_value=6, v
 
 @st.cache_data
 def fetch_data(ticker, n_days):
+    """Fetches stock data from yfinance."""
     df = yf.download(ticker, period=f"{n_days}d", progress=False, auto_adjust=False)
     return df
 
@@ -48,6 +49,15 @@ else:
 
     # Quadrant classification
     def classify_quadrant(row):
+        """
+        Classifies data points into quadrants based on return and volume.
+
+        Args:
+            row (pd.Series): A row of the DataFrame.
+
+        Returns:
+            str: The quadrant classification.
+        """
         return_pct = row.get('Return_Pct')
         volume_m = row.get('Volume_M')
 

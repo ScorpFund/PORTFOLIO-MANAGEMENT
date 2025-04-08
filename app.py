@@ -68,8 +68,8 @@ def classify_quadrants(df):
 # ---------------------- Visualization ----------------------
 def plot_cluster_scatter(df, ticker, n_days):
     fig = px.scatter(
-        df, x="Return_%", y="Volume_Millions", color=df["Cluster"].astype(str),
-        symbol="Quadrant", hover_data=["Return_%", "Volume_Millions"],
+        df, x="Return_Pct", y="Volume_M", color=df["Cluster"].astype(str),
+        symbol="Quadrant", hover_data=["Return_Pct", "Volume_M"],
         title=f"{ticker} Daily Return vs Volume (Last {n_days} Days)",
         template="plotly_white", height=600
     )

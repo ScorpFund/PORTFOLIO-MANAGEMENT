@@ -12,6 +12,11 @@ def fetch_stock_data(ticker, n_days):
         if df.empty:
             st.error(f"❌ No data found for '{ticker}' over the last {n_days} days.")
             return None
+
+        # Flatten multi-index columns if present (fix for Plotly)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         return df
     except Exception as e:
         st.error(f"❌ Error fetching data: {e}")
@@ -25,7 +30,7 @@ def process_stock_data(df):
     df['Return_Pct'] = df['Return'] * 100
     df['Volume_M'] = df['Volume'] / 1e6
 
-    # Handle outliers
+    # Remove outliers using Z-score
     z_return = np.abs((df['Return_Pct'] - df['Return_Pct'].mean()) / df['Return_Pct'].std())
     z_volume = np.abs((df['Volume_M'] - df['Volume_M'].mean()) / df['Volume_M'].std())
     df = df[(z_return < 3) & (z_volume < 3)]
@@ -42,13 +47,12 @@ def perform_clustering(df, n_clusters):
 
 # ---------------------- Quadrant Classification ----------------------
 def classify_quadrants(df):
-    x_mid = float(df['Return_Pct'].median())
-    y_mid = float(df['Volume_M'].median())
+    x_mid = df['Return_Pct'].median()
+    y_mid = df['Volume_M'].median()
 
     def get_quadrant(row):
         x = float(row['Return_Pct'])
         y = float(row['Volume_M'])
-
         if (x >= x_mid) and (y >= y_mid):
             return '📈 High Volume, High Return'
         elif (x < x_mid) and (y >= y_mid):
@@ -62,36 +66,26 @@ def classify_quadrants(df):
     return df
 
 # ---------------------- Visualization ----------------------
-
 def plot_cluster_scatter(df, ticker, n_days):
-    st.subheader("🔍 Debug Info: Data Sample Before Plot")
-    st.write(df.head())
-    st.write("Columns:", df.columns.tolist())
-
     fig = px.scatter(
-        df,
-        x="Return_Pct",
-        y="Volume_M",
-        color="Cluster",        # Ensure 'Cluster' is a column, not a Series
-        symbol="Quadrant",      # Ensure 'Quadrant' exists too
-        hover_data=["Return_Pct", "Volume_M"],
+        df, x="Return_Pct", y="Volume_M", color=df["Cluster"].astype(str),
+        symbol="Quadrant", hover_data=["Return_Pct", "Volume_M"],
         title=f"{ticker} Daily Return vs Volume (Last {n_days} Days)",
-        template="plotly_white",
-        height=600
+        template="plotly_white", height=600
     )
 
+    # Add quadrant lines
     fig.add_shape(
-        type="line",
-        x0=df["Return_Pct"].median(), x1=df["Return_Pct"].median(),
+        type="line", x0=df["Return_Pct"].median(), x1=df["Return_Pct"].median(),
         y0=df["Volume_M"].min(), y1=df["Volume_M"].max(),
         line=dict(color="gray", dash="dot")
     )
     fig.add_shape(
-        type="line",
-        x0=df["Return_Pct"].min(), x1=df["Return_Pct"].max(),
+        type="line", x0=df["Return_Pct"].min(), x1=df["Return_Pct"].max(),
         y0=df["Volume_M"].median(), y1=df["Volume_M"].median(),
         line=dict(color="gray", dash="dot")
     )
+
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------- Stats Display ----------------------
@@ -137,6 +131,11 @@ def main():
         df = process_stock_data(df)
         df = perform_clustering(df, n_clusters)
         df = classify_quadrants(df)
+
+        # Optional: Show debug sample
+        with st.expander("🔍 Debug Info: Data Sample Before Plot"):
+            st.dataframe(df.head())
+            st.write("Columns:", df.columns.tolist())
 
         plot_cluster_scatter(df, ticker, n_days)
         display_quadrant_breakdown(df)

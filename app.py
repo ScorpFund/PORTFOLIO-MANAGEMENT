@@ -62,22 +62,30 @@ def classify_quadrants(df):
     return df
 
 # ---------------------- Visualization ----------------------
+
 def plot_cluster_scatter(df, ticker, n_days):
     fig = px.scatter(
-        df, x="Return_Pct", y="Volume_M", color=df["Cluster"].astype(str),
-        symbol="Quadrant", hover_data=["Return_Pct", "Volume_M"],
+        df,
+        x="Return_Pct",
+        y="Volume_M",
+        color="Cluster",  # ← Fix: pass the column name, not a Series
+        symbol="Quadrant",
+        hover_data=["Return_Pct", "Volume_M"],
         title=f"{ticker} Daily Return vs Volume (Last {n_days} Days)",
-        template="plotly_white", height=600
+        template="plotly_white",
+        height=600
     )
 
     # Add quadrant lines
     fig.add_shape(
-        type="line", x0=df["Return_Pct"].median(), x1=df["Return_Pct"].median(),
+        type="line",
+        x0=df["Return_Pct"].median(), x1=df["Return_Pct"].median(),
         y0=df["Volume_M"].min(), y1=df["Volume_M"].max(),
         line=dict(color="gray", dash="dot")
     )
     fig.add_shape(
-        type="line", x0=df["Return_Pct"].min(), x1=df["Return_Pct"].max(),
+        type="line",
+        x0=df["Return_Pct"].min(), x1=df["Return_Pct"].max(),
         y0=df["Volume_M"].median(), y1=df["Volume_M"].median(),
         line=dict(color="gray", dash="dot")
     )

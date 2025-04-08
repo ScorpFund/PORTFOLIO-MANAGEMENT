@@ -5,11 +5,11 @@ import plotly.express as px
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-# Page config
-st.set_page_config(page_title="Stock Return vs Volume", layout="wide")
+# Page setup
+st.set_page_config(page_title="Stock Volume vs Return Clustering", layout="wide")
 st.title("📊 Stock Return vs Volume Clustering")
 
-# Sidebar Inputs
+# Sidebar input
 ticker = st.sidebar.text_input("Enter Ticker Symbol", value="AAPL").upper()
 num_days = st.sidebar.slider("Select Number of Days", min_value=10, max_value=180, value=60)
 num_clusters = st.sidebar.slider("Number of Clusters", min_value=2, max_value=6, value=3)
@@ -28,31 +28,31 @@ if ticker:
     with st.spinner("Fetching data..."):
         df = fetch_data(ticker, num_days)
 
-    # Safety check for necessary columns
-    required_cols = {'Return_Pct', 'Volume_M'}
-    if not required_cols.issubset(df.columns):
-        st.error("Missing columns required for plotting.")
-        st.write("DataFrame Columns:", df.columns.tolist())
-    else:
+    # Debug output
+    st.subheader("🧪 Debug: Data Preview")
+    st.dataframe(df.head())
+    st.write("Columns:", df.columns.tolist())
+
+    if all(col in df.columns for col in ['Return_Pct', 'Volume_M']) and not df[['Return_Pct', 'Volume_M']].isnull().any().any():
         # Clustering
         features = df[['Return_Pct', 'Volume_M']]
         scaler = StandardScaler()
         scaled = scaler.fit_transform(features)
 
         kmeans = KMeans(n_clusters=num_clusters, random_state=42)
-        df['Cluster'] = kmeans.fit_predict(scaled)
+        df['Cluster'] = kmeans.fit_predict(scaled).astype(str)
 
         # Midpoints for quadrants
         x_mid = df['Return_Pct'].median()
         y_mid = df['Volume_M'].median()
 
-        # Plot
         try:
+            # Plotly scatter plot
             fig = px.scatter(
                 df,
                 x='Return_Pct',
                 y='Volume_M',
-                color=df['Cluster'].astype(str),
+                color='Cluster',
                 hover_data=['Close', 'Volume'],
                 text=df.index.strftime('%Y-%m-%d'),
                 title=f"{ticker} – Return vs Volume Clustering",
@@ -67,7 +67,7 @@ if ticker:
                           x0=df['Return_Pct'].min(), x1=df['Return_Pct'].max(),
                           line=dict(dash="dash", color="gray"))
 
-            # Quadrant Labels
+            # Labels
             fig.add_annotation(text="📈 High Vol / High Ret", x=x_mid + 5, y=y_mid + 5, showarrow=False)
             fig.add_annotation(text="📉 High Vol / Low Ret", x=x_mid - 5, y=y_mid + 5, showarrow=False)
             fig.add_annotation(text="📈 Low Vol / High Ret", x=x_mid + 5, y=y_mid - 5, showarrow=False)
@@ -87,10 +87,9 @@ if ticker:
 
         except Exception as e:
             st.error(f"❌ Plotly error: {e}")
-            st.write("🧪 DataFrame snapshot:")
             st.dataframe(df.head())
 
-        # Classify into quadrants
+        # Quadrant classification
         def classify_quadrant(row):
             if row['Return_Pct'] >= x_mid and row['Volume_M'] >= y_mid:
                 return "High Vol / High Ret"
@@ -103,7 +102,6 @@ if ticker:
 
         df['Quadrant'] = df.apply(classify_quadrant, axis=1)
 
-        # Summary
         st.subheader("📋 Summary Statistics by Quadrant")
         summary = df.groupby('Quadrant').agg(
             Count=('Return_Pct', 'count'),
@@ -115,5 +113,7 @@ if ticker:
 
         st.dataframe(summary)
 
+    else:
+        st.error("❌ Required data columns missing or contain NaNs.")
 else:
-    st.info("Please enter a valid ticker in the sidebar to start.")
+    st.info("Please enter a ticker symbol to begin.")

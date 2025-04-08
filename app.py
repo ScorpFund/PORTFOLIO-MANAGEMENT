@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -7,112 +5,103 @@ import numpy as np
 from sklearn.cluster import KMeans
 import plotly.express as px
 
-st.set_page_config(layout="wide")
-st.title("📈 Stock Return vs Volume Clustering")
-
-# --- Sidebar Inputs ---
-st.sidebar.header("Parameters")
-ticker = st.sidebar.text_input("Ticker Symbol", value="AAPL")
-n_days = st.sidebar.slider("Number of Days", min_value=30, max_value=180, value=90, step=10)
-n_clusters = st.sidebar.slider("Number of Clusters", min_value=2, max_value=6, value=4, step=1)
-
-# --- Fetch and Process Data ---
-@st.cache_data(show_spinner=False)
 def load_data(ticker, n_days):
-    data = yf.download(ticker, period=f"{n_days}d", progress=False, auto_adjust=False)
-    if data.empty:
+    try:
+        data = yf.download(ticker, period=f"{n_days}d", progress=False, 
+auto_adjust=False)
+        if data.empty:
+            raise Exception("No data found")
+        # Perform data cleaning and transformation
+        data['Return'] = data['Close'].pct_change()
+        data.dropna(inplace=True)
+        data['Return_Pct'] = data['Return'] * 100
+        data['Volume_M'] = data['Volume'] / 1e6
+        return data
+    except Exception as e:
+        print(f"Error loading data: {str(e)}")
         return None
-    data = data[['Close', 'Volume']].dropna()
-    data['Return'] = data['Close'].pct_change()
-    data.dropna(inplace=True)
-    data['Return_Pct'] = data['Return'] * 100
-    data['Volume_M'] = data['Volume'] / 1e6
-    data = data[(data['Return_Pct'].between(-50, 50)) & (data['Volume_M'] > 0)]
-    return data
 
-data = load_data(ticker, n_days)
+def cluster_data(data, n_clusters):
+    try:
+        features = data[['Return_Pct', 'Volume_M']]
+        features_scaled = (features - features.mean()) / features.std()
+        kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+        data['Cluster'] = kmeans.fit_predict(features_scaled)
+        return data
+    except Exception as e:
+        print(f"Error clustering data: {str(e)}")
+        return None
 
-if data is None:
-    st.error("❌ No data found. Please check the ticker symbol.")
-else:
-    features = data[['Return_Pct', 'Volume_M']]
-    features_scaled = (features - features.mean()) / features.std()
-    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
-    data['Cluster'] = kmeans.fit_predict(features_scaled)
+def visualize_data(data):
+    try:
+        fig = px.scatter(
+            data,
+            x='Return_Pct',
+            y='Volume_M',
+            color='Cluster',
+            symbol='Quadrant',
+            hover_data=['Return_Pct', 'Volume_M'],
+            template='plotly_white',
+            height=600
+        )
+        # Add shapes for x and y midpoints
+        fig.add_shape(type='line', x0=data['Return_Pct'].median(), 
+x1=data['Return_Pct'].median(), y0=data['Volume_M'].median(), 
+y1=data['Volume_M'].median(),
+                      line=dict(color='gray', dash='dot'))
+        fig.add_shape(type='line', x0=data['Return_Pct'].min(), 
+x1=data['Return_Pct'].max(), y0=data['Volume_M'].min(), 
+y1=data['Volume_M'].max(),
+                      line=dict(color='gray', dash='dot'))
 
-    x_mid = data['Return_Pct'].median()
-    y_mid = data['Volume_M'].median()
+        fig.update_layout(
+            xaxis_title="Daily Return (%)",
+            yaxis_title="Volume (Millions)",
+            legend_title="Cluster"
+        )
+        return fig
+    except Exception as e:
+        print(f"Error visualizing data: {str(e)}")
+        return None
 
-    def classify_quadrant(row):
-        if float(row['Return_Pct']) >= x_mid and float(row['Volume_M']) >= y_mid:
-            return '📈 High Volume, High Return'
-        elif float(row['Return_Pct']) < x_mid and float(row['Volume_M']) >= y_mid:
-            return '📉 High Volume, Low Return'
-        elif float(row['Return_Pct']) >= x_mid and float(row['Volume_M']) < y_mid:
-            return '📊 Low Volume, High Return'
-        else:
-            return '🔻 Low Volume, Low Return'
+def main():
+    st.title("Stock Return vs Volume Clustering")
 
-    data['Quadrant'] = data.apply(classify_quadrant, axis=1)
+    # Input parameters
+    ticker = st.text_input("Ticker Symbol", "")
+    n_days = st.number_input("Number of Days", 1, 365)
 
-    # ✅ Validate expected columns before plotting
-required_cols = ['Return_Pct', 'Volume_M', 'Cluster', 'Quadrant']
-missing_cols = [col for col in required_cols if col not in data.columns or data[col].isnull().all()]
-if missing_cols:
-    st.error(f"Missing or empty required columns: {missing_cols}")
-else:
-    st.subheader(f"{ticker} Daily Returns vs Volume (Last {n_days} Days)")
-    fig = px.scatter(
-        data,
-        x='Return_Pct',
-        y='Volume_M',
-        color='Cluster',
-        symbol='Quadrant',
-        hover_data=['Return_Pct', 'Volume_M'],
-        template='plotly_white',
-        height=600
-    )
+    if not ticker or not n_days:
+        st.error("Please enter a valid ticker symbol and number of days")
+        return
 
-    fig.add_shape(type='line', x0=x_mid, x1=x_mid, y0=data['Volume_M'].min(), y1=data['Volume_M'].max(),
-                  line=dict(color='gray', dash='dot'))
-    fig.add_shape(type='line', x0=data['Return_Pct'].min(), x1=data['Return_Pct'].max(), y0=y_mid, y1=y_mid,
-                  line=dict(color='gray', dash='dot'))
+    data = load_data(ticker, n_days)
+    if not data:
+        st.error("Failed to load data. Please try again later.")
+        return
 
-    fig.update_layout(
-        xaxis_title="Daily Return (%)",
-        yaxis_title="Volume (Millions)",
-        legend_title="Cluster",
-    )
+    data = cluster_data(data, 3)  # Use 3 clusters for now
+    if not data:
+        st.error("Failed to cluster data. Please try again later.")
+        return
+
+    fig = visualize_data(data)
+    if not fig:
+        st.error("Failed to visualize data. Please try again later.")
+        return
+
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Plot ---
-    st.subheader(f"{ticker} Daily Returns vs Volume (Last {n_days} Days)")
-    fig = px.scatter(
-        data,
-        x='Return_Pct',
-        y='Volume_M',
-        color='Cluster',
-        symbol='Quadrant',
-        hover_data=['Return_Pct', 'Volume_M'],
-        template='plotly_white',
-        height=600
-    )
-    fig.add_shape(type='line', x0=x_mid, x1=x_mid, y0=data['Volume_M'].min(), y1=data['Volume_M'].max(),
-                  line=dict(color='gray', dash='dot'))
-    fig.add_shape(type='line', x0=data['Return_Pct'].min(), x1=data['Return_Pct'].max(), y0=y_mid, y1=y_mid,
-                  line=dict(color='gray', dash='dot'))
+    # Display quadrant breakdown
+    st.markdown("### Quadrant Breakdown")
+    st.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").rest.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").reset_index(name="Days"))
 
-    fig.update_layout(
-        xaxis_title="Daily Return (%)",
-        yaxis_title="Volume (Millions)",
-        legend_title="Cluster",
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- Stats ---
-    st.markdown("### 📌 Quadrant Breakdown")
-    st.dataframe(data['Quadrant'].value_counts().rename_axis("Quadrant").reset_index(name="Days"))
-
-    st.markdown("### 📌 Cluster Stats")
-    cluster_stats = data.groupby('Cluster')[['Return_Pct', 'Volume_M']].agg(['mean', 'std', 'count']).round(2)
+    # Display cluster stats
+    st.markdown("### Cluster Stats")
+    cluster_stats = data.groupby('Cluster')[['Return_Pct', 
+'Volume_M']].agg(['mean', 'std', 'count']).round(2)
     st.dataframe(cluster_stats)
+
+if __name__ == "__main__":
+    main()
+```
